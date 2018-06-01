@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { EventEmitter } from 'events';
-import { Sipster, TransportConfig, EpConfig, AccountConfig, Call, CallInfo, Account, AudioMediaPlayer, AudioMediaRecorder, Media } from 'sipster.ts';
+import { Sipster, TransportConfig, EpConfig, AccountConfig, Call, CallInfo, Account, AudioMediaPlayer, AudioMediaRecorder, Media, Buddy } from 'sipster.ts';
 export { TransportConfig, EpConfig, AccountConfig, CallInfo, Media };
 export interface PlayerConfig {
     player?: {
@@ -44,6 +44,7 @@ export declare class CallExt extends EventEmitter {
     medias: Media[];
     protected readonly player: AudioMediaPlayer;
     protected readonly recorder: AudioMediaRecorder;
+    protected onConnecting(): void;
     constructor(account: AccountExt, call: Call, playerConfig?: PlayerConfig);
     onConfirmed(): void;
     onDtmf(digit: string): void;
@@ -55,13 +56,29 @@ export declare class CallExt extends EventEmitter {
      */
     answer(statusCode?: number, reason?: string): void;
     /**
-     * Hangs up the call with an optional statusCode (defaults to 603)
-     * and optional reason phrase. This function is different than answering
-     * the call with 3xx-6xx response (with answer()), in that this function
-     * will hangup the call regardless of the state and role of the call,
-     * while answer() only works with incoming calls on EARLY state.
-     */
-    hangup(statusCode?: number, reason?: string): void;
+ * Hangs up the call with an optional statusCode (defaults to 603)
+ * and optional reason phrase. This function is different than answering
+ * the call with 3xx-6xx response (with answer()), in that this function
+ * will hangup the call regardless of the state and role of the call,
+ * while answer() only works with incoming calls on EARLY state.
+ */
+    hangup(statusCode?: number, reason?: string): Promise<void>;
+    playSong(songPath: string): void;
+}
+/**
+ * An adapter class to Sipster.ts.Account
+ * @see {@link https://minoruta.github.io/sipster.ts/classes/account.html|Sipster.ts.Account}
+ * @see {@link http://www.pjsip.org/pjsip/docs/html/classpj_1_1Account.htm|Pjsip.Account} as well
+ * @fires BuddyExt#stateChanged
+ */
+export declare class BuddyExt extends EventEmitter {
+    private readonly _buddy;
+    readonly state: string;
+    readonly buddy: Buddy;
+    constructor(buddy: Buddy);
+    onBuddyState(uri: string, stateText: string): void;
+    sendInstantMessage(message: string): void;
+    subscribePresence(subscribe: boolean): void;
 }
 /**
  * An adapter class to Sipster.ts.Account
@@ -77,10 +94,7 @@ export declare class AccountExt extends EventEmitter {
     private readonly _account;
     private readonly _playerConfig;
     private _state;
-    private _call?;
     readonly account: Account;
-    readonly isCallInProgress: boolean;
-    readonly call: CallExt;
     readonly playerConfig: PlayerConfig;
     state: string;
     constructor(ua: Pjsua, account: Account, playerConfig?: PlayerConfig);
@@ -89,11 +103,7 @@ export declare class AccountExt extends EventEmitter {
     onUnregistering(): void;
     onUnregistered(): void;
     onCall(info: CallInfo, call: Call): void;
-    protected onConfirmed(): void;
-    protected onConnecting(): void;
-    protected onDisconnected(): void;
-    protected onMedia(medias: Media[]): void;
-    protected onDtmf(digit: string): void;
+    onInstantMessage(fromUri: string, msg: string): void;
     /**
      * Start a new SIP call to destination.
      * @return when the outbound call has been connected.
@@ -101,25 +111,7 @@ export declare class AccountExt extends EventEmitter {
      * @reject {Error}  call in progress
      * @reject {Error}  disconnected
      */
-    makeCall(destination: string): Promise<CallExt>;
-    /**
-     * For incoming calls, this responds to the INVITE with an optional
-     * statusCode (defaults to 200) and optional reason phrase.
-     * @return when the inbound call has been confirmed.
-     * @reject {Error}  calling in progress
-     * @reject {Error}  disconnected
-     */
-    answer(call: CallExt, statusCode?: number, reason?: string): Promise<void>;
-    /**
-     * Hangs up the call with an optional statusCode (defaults to 603)
-     * and optional reason phrase. This function is different than answering
-     * the call with 3xx-6xx response (with answer()), in that this function
-     * will hangup the call regardless of the state and role of the call,
-     * while answer() only works with incoming calls on EARLY state.
-     * @return when the outstanding call has been disconnected.
-     * @reject {Error}  not calling
-     */
-    hangup(statusCode?: number, reason?: string): Promise<void>;
+    makeCall(destination: string, param?: string, playerConfig?: PlayerConfig): Promise<CallExt>;
     /**
      * Update registration or perform unregistration.
      * You only need to call this method if you want to manually update the
@@ -129,6 +121,8 @@ export declare class AccountExt extends EventEmitter {
      *              do 'register' with expiration=0 to unregister when false.
      */
     setRegistration(renew: boolean): void;
+    addBuddy(buddyUri: string, subscribePresence?: boolean): BuddyExt;
+    delBuddy(buddyUri: string): void;
 }
 /**
  * A simple Pjsua2 which provides player to playback and record
@@ -147,6 +141,7 @@ export declare class Pjsua {
     protected onUnregistering(): void;
     protected onUnregistered(): void;
     protected onCall(info: CallInfo, call: Call): void;
+    protected onInstantMessage(fromUri: string, msg: string): void;
     /**
      * Make an account and start registration
      * @param accountConfig     is for making an acount
@@ -163,4 +158,6 @@ export declare class Pjsua {
      * @reject {Error}  not registered
      */
     removeAccount(): Promise<void>;
+    createPlayer(filename: string): AudioMediaPlayer;
+    createRecorder(filename: string): AudioMediaRecorder;
 }

@@ -1,10 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const DEBUG = require("debug");
 const events_1 = require("events");
 const sipster_ts_1 = require("sipster.ts");
 exports.Media = sipster_ts_1.Media;
-const debug = DEBUG('PJSUA:main');
+//const debug = DEBUG('PJSUA:main');
+const debug = console.log;
 /**
  * An adapter class to Sipster.ts.Call
  * @see {@link https://minoruta.github.io/sipster.ts/classes/call.html|Sipster.ts.Call}
@@ -31,40 +31,72 @@ class CallExt extends events_1.EventEmitter {
     get recorder() {
         return this._recorder;
     }
+    onConnecting() {
+        debug('AccountExt.onConnecting');
+    }
     constructor(account, call, playerConfig) {
         super();
         this._account = account;
         this._call = call;
+        call.on('dtmf', digit => this.onDtmf(digit));
+        call.on('media', medias => this.onMedia(medias));
+        call.on('state', state => {
+            switch (state) {
+                case 'connecting':
+                    return this.onConnecting();
+                case 'confirmed':
+                    return this.onConfirmed();
+                case 'disconnected':
+                    console.log("call on state disconnected");
+                    call.removeAllListeners();
+                    return this.onDisconnected();
+            }
+        });
         if (playerConfig)
             this._playerConfig = playerConfig;
         else
             this._playerConfig = account.playerConfig;
-        if (this._playerConfig.player)
-            this._player = sipster_ts_1.Sipster.instance()
-                .createPlayer(this._playerConfig.player.filename);
+        if (this._playerConfig.player) {
+            this._player = sipster_ts_1.Sipster.instance().createPlayer(); //this._playerConfig.player.filename
+            this._player.on('playerStatus', (songPath, type, param) => {
+                //console.log("CallExt::playerStatus, song:" + songPath + ",type" + type + ",param" + param);
+                this.emit('playerStatus', songPath, type, param);
+            });
+        }
         if (this._playerConfig.recorder)
             this._recorder = sipster_ts_1.Sipster.instance()
                 .createRecorder(this._playerConfig.recorder.filename);
     }
     onConfirmed() {
-        debug('CallExt.onConfirmed');
+        console.log('CallExt.onConfirmed');
     }
     onDtmf(digit) {
-        debug(`CallExt.onDtmf ${digit}`);
+        console.log(`CallExt.onDtmf ${digit}`);
         this.emit('dtmf', digit);
     }
     onDisconnected() {
-        debug('CallExt.onDisconnected');
-        for (const media of this.medias)
-            media.close();
+        console.log('CallExt.onDisconnected');
+        if (this.medias) {
+            for (const media of this.medias) {
+                media.close();
+            }
+        }
+        if (this._player) {
+            this._player.close();
+        }
         this.emit('disconnected');
     }
     onMedia(medias) {
-        debug(`CallExt.onMedia ${medias.length}`);
+        console.log(`CallExt.onMedia ${medias.length}`);
         if (medias.length <= 0)
             return;
-        if (this.player)
+        if (this.player) {
+            if (this._playerConfig.player) {
+                console.log("CallExt::onMedia, Play " + this._playerConfig.player.filename);
+                this.player.playSong(this._playerConfig.player.filename);
+            }
             this.player.startTransmitTo(medias[0]);
+        }
         if (this.recorder)
             medias[0].startTransmitTo(this.recorder);
         this.medias = medias;
@@ -74,28 +106,79 @@ class CallExt extends events_1.EventEmitter {
      * statusCode (defaults to 200) and optional reason phrase.
      */
     answer(statusCode, reason) {
-        debug('CallExt.answer');
+        console.log('CallExt.answer');
         this.call.answer(statusCode, reason);
     }
     /**
-     * Hangs up the call with an optional statusCode (defaults to 603)
-     * and optional reason phrase. This function is different than answering
-     * the call with 3xx-6xx response (with answer()), in that this function
-     * will hangup the call regardless of the state and role of the call,
-     * while answer() only works with incoming calls on EARLY state.
-     */
+ * Hangs up the call with an optional statusCode (defaults to 603)
+ * and optional reason phrase. This function is different than answering
+ * the call with 3xx-6xx response (with answer()), in that this function
+ * will hangup the call regardless of the state and role of the call,
+ * while answer() only works with incoming calls on EARLY state.
+ */
     hangup(statusCode, reason) {
-        debug('CallExt.hangup');
-        if (this.medias && this.medias.length > 0) {
-            if (this.player)
-                this.player.stopTransmitTo(this.medias[0]);
-            if (this.recorder)
-                this.medias[0].stopTransmitTo(this.recorder);
+        console.log('CallExt.hangup');
+        return new Promise((resolve, reject) => {
+            this.call.removeAllListeners();
+            this.call.on('state', (state) => {
+                debug('AccountExt.hangup.call', state);
+                switch (state) {
+                    case 'disconnected':
+                        console.log("call on hangup disconnected");
+                        this.call.removeAllListeners();
+                        this.onDisconnected();
+                        return resolve();
+                }
+            });
+            if (this.medias && this.medias.length > 0) {
+                if (this.player)
+                    this.player.stopTransmitTo(this.medias[0]);
+                if (this.recorder)
+                    this.medias[0].stopTransmitTo(this.recorder);
+            }
+            this.call.hangup(statusCode, reason);
+        });
+    }
+    playSong(songPath) {
+        if (this.player) {
+            console.log("CallExt::playSong, Play song " + songPath);
+            this.player.playSong(songPath);
         }
-        this.call.hangup(statusCode, reason);
     }
 }
 exports.CallExt = CallExt;
+/**
+ * An adapter class to Sipster.ts.Account
+ * @see {@link https://minoruta.github.io/sipster.ts/classes/account.html|Sipster.ts.Account}
+ * @see {@link http://www.pjsip.org/pjsip/docs/html/classpj_1_1Account.htm|Pjsip.Account} as well
+ * @fires BuddyExt#stateChanged
+ */
+class BuddyExt extends events_1.EventEmitter {
+    get state() {
+        return "offline";
+    }
+    get buddy() {
+        return this._buddy;
+    }
+    constructor(buddy) {
+        super();
+        this._buddy = buddy;
+        this._buddy.on('buddyStatus', (uri, stateText) => this.onBuddyState(uri, stateText));
+    }
+    onBuddyState(uri, stateText) {
+        debug('BuddyExt.onBuddyState, from:' + uri + ", stateText:" + stateText);
+        this.emit('buddyState', uri, stateText);
+    }
+    sendInstantMessage(message) {
+        debug('BuddyExt.sendInstantMessage');
+        this._buddy.sendInstantMessage(message);
+    }
+    subscribePresence(subscribe) {
+        debug("BuddyExt subscribePresence");
+        this.buddy.subscribePresence(subscribe);
+    }
+}
+exports.BuddyExt = BuddyExt;
 /**
  * An adapter class to Sipster.ts.Account
  * @see {@link https://minoruta.github.io/sipster.ts/classes/account.html|Sipster.ts.Account}
@@ -106,15 +189,18 @@ exports.CallExt = CallExt;
  * @fires AccountExt#call
  */
 class AccountExt extends events_1.EventEmitter {
+    //private _call?: CallExt;
     get account() {
         return this._account;
     }
-    get isCallInProgress() {
-        return !!this._call;
-    }
-    get call() {
-        return this._call;
-    }
+    /*
+        get isCallInProgress(): boolean {
+            return !!this._call;
+        }
+        get call(): CallExt {
+            return this._call;
+        }
+    */
     get playerConfig() {
         return this._playerConfig;
     }
@@ -155,32 +241,13 @@ class AccountExt extends events_1.EventEmitter {
     }
     onCall(info, call) {
         debug('AccountExt.onCall');
-        if (this.isCallInProgress)
-            return call.hangup();
+        //if (this.isCallInProgress)
+        //    return call.hangup();
         this.emit('call', info, new CallExt(this, call));
     }
-    onConfirmed() {
-        debug('AccountExt.onConfirmed');
-        if (this.isCallInProgress)
-            this.call.onConfirmed();
-    }
-    onConnecting() {
-        debug('AccountExt.onConnecting');
-    }
-    onDisconnected() {
-        debug('AccountExt.onDisconnected');
-        if (this.isCallInProgress)
-            this.call.onDisconnected();
-    }
-    onMedia(medias) {
-        debug(`AccountExt.onMedia ${medias.length}`);
-        if (this.isCallInProgress)
-            this.call.onMedia(medias);
-    }
-    onDtmf(digit) {
-        debug(`AccountExt.onDtmf ${digit}`);
-        if (this.isCallInProgress)
-            this.call.onDtmf(digit);
+    onInstantMessage(fromUri, msg) {
+        debug('AccountExt.onInstantMessage ${fromUri}:${msg}');
+        this.emit('onInstantMessage', fromUri, msg);
     }
     /**
      * Start a new SIP call to destination.
@@ -189,91 +256,20 @@ class AccountExt extends events_1.EventEmitter {
      * @reject {Error}  call in progress
      * @reject {Error}  disconnected
      */
-    makeCall(destination) {
-        debug('AccountExt.makeCall');
+    makeCall(destination, param, playerConfig) {
+        debug('AccountExt.makeCall, des:' + destination + ", playerConfig:" + playerConfig);
         return new Promise((resolve, reject) => {
             if (this.state !== 'registered')
                 return reject(new Error('not registered'));
-            if (this.isCallInProgress)
-                return reject(new Error('call in progress'));
-            const call = this.account.makeCall(destination);
-            this._call = new CallExt(this, call);
-            call.on('dtmf', digit => this.onDtmf(digit));
-            call.on('media', medias => this.onMedia(medias));
-            call.on('state', state => {
-                switch (state) {
-                    case 'connecting':
-                        return this.onConnecting();
-                    case 'confirmed':
-                        this.onConfirmed();
-                        return resolve(this.call);
-                    case 'disconnected':
-                        call.removeAllListeners();
-                        this.onDisconnected();
-                        this._call = undefined;
-                        return reject(new Error('disconnected'));
-                }
-            });
-        });
-    }
-    /**
-     * For incoming calls, this responds to the INVITE with an optional
-     * statusCode (defaults to 200) and optional reason phrase.
-     * @return when the inbound call has been confirmed.
-     * @reject {Error}  calling in progress
-     * @reject {Error}  disconnected
-     */
-    answer(call, statusCode, reason) {
-        debug('AccountExt.answer');
-        return new Promise((resolve, reject) => {
-            if (this.isCallInProgress)
-                return reject(new Error('calling in progress'));
-            this._call = call;
-            call.call.on('dtmf', digit => this.onDtmf(digit));
-            call.call.on('media', medias => this.onMedia(medias));
-            call.call.on('state', state => {
-                switch (state) {
-                    case 'connecting':
-                        return this.onConnecting();
-                    case 'confirmed':
-                        this.onConfirmed();
-                        return resolve();
-                    case 'disconnected':
-                        call.call.removeAllListeners();
-                        this.onDisconnected();
-                        this._call = undefined;
-                        return reject(new Error('disconnected'));
-                }
-            });
-            call.answer(statusCode, reason);
-        });
-    }
-    /**
-     * Hangs up the call with an optional statusCode (defaults to 603)
-     * and optional reason phrase. This function is different than answering
-     * the call with 3xx-6xx response (with answer()), in that this function
-     * will hangup the call regardless of the state and role of the call,
-     * while answer() only works with incoming calls on EARLY state.
-     * @return when the outstanding call has been disconnected.
-     * @reject {Error}  not calling
-     */
-    hangup(statusCode, reason) {
-        debug('AccountExt.hangup');
-        return new Promise((resolve, reject) => {
-            if (!this.isCallInProgress)
-                return reject(new Error('not calling'));
-            this.call.call.removeAllListeners();
-            this.call.call.on('state', (state) => {
-                debug('AccountExt.hangup.call', state);
-                switch (state) {
-                    case 'disconnected':
-                        this.call.call.removeAllListeners();
-                        this.onDisconnected();
-                        this._call = undefined;
-                        return resolve();
-                }
-            });
-            this.call.hangup(statusCode, reason);
+            //if (this.isCallInProgress)
+            //    return reject(new Error('call in progress'));
+            let isAuto = true;
+            if (playerConfig) {
+                isAuto = false;
+            }
+            const call = this.account.makeCall(destination, param, isAuto);
+            const callExt = new CallExt(this, call, playerConfig);
+            resolve(callExt);
         });
     }
     /**
@@ -287,6 +283,13 @@ class AccountExt extends events_1.EventEmitter {
     setRegistration(renew) {
         debug('AccountExt.setRegistration', renew);
         this.account.setRegistration(renew);
+    }
+    addBuddy(buddyUri, subscribePresence = false) {
+        let buddy = new BuddyExt(this.account.addBuddy(buddyUri, subscribePresence));
+        return buddy;
+    }
+    delBuddy(buddyUri) {
+        this.account.delBuddy(buddyUri);
     }
 }
 exports.AccountExt = AccountExt;
@@ -333,6 +336,11 @@ class Pjsua {
         if (this.account)
             this.account.onCall(info, call);
     }
+    onInstantMessage(fromUri, msg) {
+        debug('Pjsua.onInstantMessage');
+        if (this.account)
+            this.account.onInstantMessage(fromUri, msg);
+    }
     /**
      * Make an account and start registration
      * @param accountConfig     is for making an acount
@@ -372,6 +380,7 @@ class Pjsua {
                 this.onRegistered();
                 resolve();
             });
+            account.on('instantMessage', (fromUri, msg) => this.onInstantMessage(fromUri, msg));
             if (this.sipster.state === 'init')
                 this.sipster.start();
         });
@@ -388,8 +397,8 @@ class Pjsua {
         return new Promise((resolve, reject) => {
             if (!this.account)
                 return reject(new Error('no account'));
-            if (this.account.isCallInProgress)
-                return reject(new Error('call in progress'));
+            //if (this.account.isCallInProgress)
+            //    return reject(new Error('call in progress'));
             if (this.account.state === 'unregistered')
                 return resolve(); // noop
             if (this.account.state !== 'registered')
@@ -402,6 +411,31 @@ class Pjsua {
             });
             this.account.setRegistration(false);
         });
+    }
+    /*
+    startLocalRecord(filename: string): boolean {
+        return Sipster.instance().startLocalRecord(filename);
+    }
+
+    stopLocalRecord(): boolean {
+        return Sipster.instance().stopLocalRecord();
+    }
+
+    startLocalPlay(filename: string): boolean {
+        return Sipster.instance().startLocalPlay(filename);
+    }
+
+    stopLocalPlay(): boolean {
+        return Sipster.instance().stopLocalPlay();
+    }
+    */
+    createPlayer(filename) {
+        let player = sipster_ts_1.Sipster.instance().createPlayer();
+        player.playSong(filename);
+        return player;
+    }
+    createRecorder(filename) {
+        return sipster_ts_1.Sipster.instance().createRecorder(filename);
     }
 }
 exports.Pjsua = Pjsua;
