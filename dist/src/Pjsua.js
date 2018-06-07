@@ -59,7 +59,7 @@ class CallExt extends events_1.EventEmitter {
         if (this._playerConfig.player) {
             this._player = sipster_ts_1.Sipster.instance().createPlayer(); //this._playerConfig.player.filename
             this._player.on('playerStatus', (songPath, type, param) => {
-                //console.log("CallExt::playerStatus, song:" + songPath + ",type" + type + ",param" + param);
+                console.log("CallExt::playerStatus, song:" + songPath + ",type" + type + ",param" + param);
                 this.emit('playerStatus', songPath, type, param);
             });
         }
@@ -170,7 +170,7 @@ class BuddyExt extends events_1.EventEmitter {
         this.emit('buddyState', uri, stateText);
     }
     sendInstantMessage(message) {
-        debug('BuddyExt.sendInstantMessage');
+        debug('BuddyExt.answer');
         this._buddy.sendInstantMessage(message);
     }
     subscribePresence(subscribe) {
@@ -436,6 +436,9 @@ class Pjsua {
     }
     createRecorder(filename) {
         return sipster_ts_1.Sipster.instance().createRecorder(filename);
+    }
+    enumDevs() {
+        return this._sipster.enumDevs;
     }
 }
 exports.Pjsua = Pjsua;

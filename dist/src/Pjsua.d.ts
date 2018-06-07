@@ -160,4 +160,5 @@ export declare class Pjsua {
     removeAccount(): Promise<void>;
     createPlayer(filename: string): AudioMediaPlayer;
     createRecorder(filename: string): AudioMediaRecorder;
+    enumDevs(): Array<string>;
 }

@@ -556,4 +556,8 @@ export class Pjsua {
     createRecorder(filename:string): AudioMediaRecorder {
         return Sipster.instance().createRecorder(filename);
     }
+
+    enumDevs():Array<string> {
+        return this._sipster.enumDevs;
+    }
 }
