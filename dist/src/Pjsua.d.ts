@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { EventEmitter } from 'events';
-import { Sipster, TransportConfig, EpConfig, AccountConfig, Call, CallInfo, Account, AudioMediaPlayer, AudioMediaRecorder, Media, Buddy } from 'sipster.ts';
+import { Sipster, TransportConfig, EpConfig, AccountConfig, Call, CallInfo, Account, AudioMediaPlayer, AudioMediaRecorder, Media, Buddy, AudioDevInfo } from 'sipster.ts';
 export { TransportConfig, EpConfig, AccountConfig, CallInfo, Media };
 export interface PlayerConfig {
     player?: {
@@ -39,6 +39,7 @@ export declare class CallExt extends EventEmitter {
     private readonly _player?;
     private readonly _recorder?;
     private _medias?;
+    readonly callInfo: CallInfo;
     readonly call: Call;
     protected readonly account: AccountExt;
     medias: Media[];
@@ -111,7 +112,7 @@ export declare class AccountExt extends EventEmitter {
      * @reject {Error}  call in progress
      * @reject {Error}  disconnected
      */
-    makeCall(destination: string, param?: string, playerConfig?: PlayerConfig): Promise<CallExt>;
+    makeCall(destination: string, param?: string, audioDeviceId?: number, playerConfig?: PlayerConfig): Promise<CallExt>;
     /**
      * Update registration or perform unregistration.
      * You only need to call this method if you want to manually update the
@@ -160,5 +161,5 @@ export declare class Pjsua {
     removeAccount(): Promise<void>;
     createPlayer(filename: string): AudioMediaPlayer;
     createRecorder(filename: string): AudioMediaRecorder;
-    enumDevs(): Array<string>;
+    enumDevs(): Array<AudioDevInfo>;
 }

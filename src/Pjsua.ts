@@ -14,6 +14,7 @@ import {
     Media,
     makeAccountConfig,
     Buddy,
+    AudioDevInfo
 } from 'sipster.ts';
 
 export {
@@ -67,6 +68,10 @@ export class CallExt extends EventEmitter {
     private readonly _recorder?: AudioMediaRecorder;
     private _medias?: Media[];
 
+    get callInfo():CallInfo {
+        return this._call.callInfo;
+    }
+    
     get call(): Call {
         return this._call;
     }
@@ -353,20 +358,24 @@ export class AccountExt extends EventEmitter {
      * @reject {Error}  call in progress
      * @reject {Error}  disconnected
      */
-    makeCall(destination: string, param?: string, playerConfig?: PlayerConfig): Promise<CallExt> {
+    makeCall(destination: string, param?: string, audioDeviceId?:number, playerConfig?: PlayerConfig): Promise<CallExt> {
         debug('AccountExt.makeCall, des:' + destination + ", playerConfig:" + playerConfig);
         return new Promise((resolve, reject) => {
             if (this.state !== 'registered')
                 return reject(new Error('not registered'));
             //if (this.isCallInProgress)
             //    return reject(new Error('call in progress'));
-
+            /*
             let isAuto = true;
             if (playerConfig) {
                 isAuto = false;
             }
-
-            const call = this.account.makeCall(destination, param, isAuto);
+            */
+            if (audioDeviceId) {
+                console.log("Use device:" + audioDeviceId + " to record");
+            }
+            
+            const call = this.account.makeCall(destination, param, audioDeviceId);
             const callExt = new CallExt(this, call, playerConfig);
             resolve(callExt);
         });
@@ -557,7 +566,7 @@ export class Pjsua {
         return Sipster.instance().createRecorder(filename);
     }
 
-    enumDevs():Array<string> {
+    enumDevs():Array<AudioDevInfo> {
         return this._sipster.enumDevs;
     }
 }

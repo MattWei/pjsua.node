@@ -13,6 +13,9 @@ const debug = console.log;
  * @fires CallExt#disconnected
  */
 class CallExt extends events_1.EventEmitter {
+    get callInfo() {
+        return this._call.callInfo;
+    }
     get call() {
         return this._call;
     }
@@ -256,18 +259,23 @@ class AccountExt extends events_1.EventEmitter {
      * @reject {Error}  call in progress
      * @reject {Error}  disconnected
      */
-    makeCall(destination, param, playerConfig) {
+    makeCall(destination, param, audioDeviceId, playerConfig) {
         debug('AccountExt.makeCall, des:' + destination + ", playerConfig:" + playerConfig);
         return new Promise((resolve, reject) => {
             if (this.state !== 'registered')
                 return reject(new Error('not registered'));
             //if (this.isCallInProgress)
             //    return reject(new Error('call in progress'));
+            /*
             let isAuto = true;
             if (playerConfig) {
                 isAuto = false;
             }
-            const call = this.account.makeCall(destination, param, isAuto);
+            */
+            if (audioDeviceId) {
+                console.log("Use device:" + audioDeviceId + " to record");
+            }
+            const call = this.account.makeCall(destination, param, audioDeviceId);
             const callExt = new CallExt(this, call, playerConfig);
             resolve(callExt);
         });
