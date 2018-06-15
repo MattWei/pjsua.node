@@ -94,11 +94,18 @@ class CallExt extends events_1.EventEmitter {
         if (medias.length <= 0)
             return;
         if (this.player) {
-            if (this._playerConfig.player) {
-                console.log("CallExt::onMedia, Play " + this._playerConfig.player.filename);
-                this.player.playSong(this._playerConfig.player.filename);
+            let status = medias[0].status;
+            console.log("Media status" + status);
+            if (status === "active") {
+                if (this._playerConfig.player) {
+                    console.log("CallExt::onMedia, Play " + this._playerConfig.player.filename);
+                    this.player.playSong(this._playerConfig.player.filename);
+                }
+                this.player.startTransmitTo(medias[0]);
             }
-            this.player.startTransmitTo(medias[0]);
+            else if (status === "localHold" || status === "remoteHold") {
+                this.player.stopTransmitTo(medias[0]);
+            }
         }
         if (this.recorder)
             medias[0].startTransmitTo(this.recorder);
@@ -145,6 +152,7 @@ class CallExt extends events_1.EventEmitter {
     playSong(songPath) {
         if (this.player) {
             console.log("CallExt::playSong, Play song " + songPath);
+            this._playerConfig.player.filename = songPath;
             this.player.playSong(songPath);
         }
     }
