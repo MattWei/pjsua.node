@@ -9,8 +9,8 @@
     "type": "git",
     "url": "git://github.com/minoruta/pjsua.node.git"
   },
-  "main": "./dist/src/Pjsua.js",
-  "types": "./dist/src/Pjsua.d.ts",
+  "main": "./dist/Pjsua.js",
+  "types": "./dist/Pjsua.d.ts",
   "scripts": {
     "build": "npm run build-ts && npm run tslint",
     "test": "jest --forceExit",
@@ -18,37 +18,16 @@
     "tslint": "tslint -c tslint.json -p tsconfig.json",
     "docs": "node_modules/.bin/typedoc src && ./.remove_local.sh"
   },
-  "engines": {
-    "node": ">= 8"
-  },
-  "dependencies": {
-    "debug": "^3.1.0",
-    "sipster.ts": "../sipster.ts"
-  },
   "devDependencies": {
-    "@types/debug": "0.0.30",
-    "@types/jest": "^21.1.5",
-    "@types/node": "^8.0.47",
+    "rxjs": "5.5.2",
     "asterisk-ami-client": "^1.0.5",
-    "jest": "^21.2.1",
     "path": "^0.12.7",
-    "ts-jest": "^21.1.4",
     "tslint": "^5.8.0",
     "typedoc": "^0.9.0",
     "typedoc-plugin-sourcefile-url": "^1.0.3",
     "typescript": "^2.5.3"
   },
-  "jest": {
-    "moduleFileExtensions": [
-      "ts",
-      "js"
-    ],
-    "transform": {
-      "^.+\\.(ts|tsx)$": "./node_modules/ts-jest/preprocessor.js"
-    },
-    "testMatch": [
-      "**/test/**/*.test.ts"
-    ],
-    "testEnvironment": "node"
+  "dependencies": {
+    "@angular/core": "^6.0.5"
   }
 }
