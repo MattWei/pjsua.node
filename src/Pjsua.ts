@@ -1,27 +1,191 @@
 import { QWebChannel } from "./qwebchannel";
 import { rejects } from "assert";
+import { resolve } from "dns";
 
-var g_qtPjsip: any;
-var g_qtSipAccount: Account;
-var g_qtDatabase: any;
-var g_qtFileSystem: any;
+var g_channel:any;
 
-var SUCCEED:string = "OK";
+//var g_qtPjsip: any;
+//var g_qtSipAccount: Account;
+//var g_qtDatabase: any;
+//var g_qtFileSystem: any;
+//var g_qtPlayer: any;
+//var g_qtRecorder: any;
+//var g_qtApp: any;
+
+var SUCCEED: string = "OK";
+
+export class App {
+    private qtApp:any;
+    private static mInstance: App = null;
+    onAppClose: () => void;
+
+    private constructor() {
+
+    }
+
+    public setCloseEventSlot() {
+        this.qtApp = g_channel.objects.app;
+        let self = this;
+        this.qtApp.appCloseEvent.connect(() => {
+            if (self.onAppClose) {
+                self.onAppClose();
+            }
+        });
+    }
+
+    public static getInstance() {
+        if (!this.mInstance) {
+            this.mInstance = new App();
+        }
+
+        return this.mInstance;
+    }
+
+    public getUUID(): Promise<string> {
+        return new Promise((resolve, reject) => {
+            this.qtApp.getUUID((uuid: string) => {
+                resolve(uuid);
+            })
+        })
+    }
+
+    public exit() {
+        this.qtApp.exitApp();
+    }
+}
+
 
 var qtWebChannel = new QWebChannel(qt.webChannelTransport, function (channel: any) {
     console.log("Run on QWebChannel create");
-    g_qtDatabase = channel.objects.database;
+    g_channel = channel;
 
-    g_qtPjsip = channel.objects.pjsip;
-    g_qtSipAccount = new Account(g_qtPjsip.account);
 
-    g_qtFileSystem = channel.objects.fileSystem;
+    App.getInstance().setCloseEventSlot();
+
+    //g_qtDatabase = channel.objects.database;
+
+    //g_qtPjsip = channel.objects.pjsip;
+    //g_qtSipAccount = new Account(g_qtPjsip.account);
+
+    //g_qtFileSystem = channel.objects.fileSystem;
+
+    //g_qtPlayer = channel.objects.player;
+    //g_qtRecorder = channel.objects.recorder;
 });
 
+export class QtSipPlayer {
+    private qtPlayer:any = null;
+    onPlayStateChanged: (songPath: string, type: number, param: number) => void = null;
+
+    private static mInstance: QtSipPlayer = null;
+
+    public static getInstance() {
+        if (!this.mInstance) {
+            this.mInstance = new QtSipPlayer();
+        }
+
+        return this.mInstance;
+    }
+
+    play(path: string): Promise<any> {
+        return new Promise((resolve, reject) => {
+            this.qtPlayer.play(path, (result: string) => {
+                if (result === SUCCEED) {
+                    resolve(true);
+                } else {
+                    reject(result);
+                }
+            })
+        })
+    }
+
+    private constructor() {
+        let self = this;
+        this.qtPlayer = g_channel.objects.player;
+        this.qtPlayer.playState.connect((songPath: string, type: number, param: number): void => {
+            if (self.onPlayStateChanged) {
+                self.onPlayStateChanged(songPath, type, param);
+            }
+        });
+    }
+
+    stop(): Promise<any> {
+        return new Promise((resolve, reject) => {
+            this.qtPlayer.stop((result: string) => {
+                if (result === SUCCEED) {
+                    resolve(true)
+                } else {
+                    reject(result);
+                }
+            })
+        })
+    }
+}
+
+export class QtSipRecorder {
+    private qtRecorder:any;
+
+    private static mInstance: QtSipRecorder = null;
+
+    public static getInstance() {
+        if (!this.mInstance) {
+            this.mInstance = new QtSipRecorder();
+        }
+
+        return this.mInstance;
+    }
+
+    private constructor() {
+        this.qtRecorder = g_channel.objects.recorder;
+    }
+
+    record(path: string): Promise<any> {
+        return new Promise((resolve, reject) => {
+            this.qtRecorder.record(path, (result: string) => {
+                if (result === SUCCEED) {
+                    resolve(true);
+                } else {
+                    reject(result);
+                }
+            })
+        })
+    }
+
+
+
+    stop(): Promise<any> {
+        return new Promise((resolve, reject) => {
+            this.qtRecorder.stop((result: string) => {
+                console.log("Stop record result: " + result);
+                if (result === SUCCEED) {
+                    resolve(true)
+                } else {
+                    reject(result);
+                }
+            })
+        })
+    }
+}
+
 export class QtFile {
+    private qtFileSystem:any = null;
+    private static mInstance: QtFile = null;
+
+    public static getInstance() {
+        if (!this.mInstance) {
+            this.mInstance = new QtFile();
+        }
+
+        return this.mInstance;
+    }
+
+    private constructor() {
+        this.qtFileSystem = g_channel.objects.fileSystem;
+    }
+
     openFileDialog(): Promise<Array<string>> {
         return new Promise((resolve, reject) => {
-            g_qtFileSystem.openFileDialog(function (files: Array<string>) {
+            this.qtFileSystem.openFileDialog(function (files: Array<string>) {
                 if (files) {
                     resolve(files);
                 } else {
@@ -30,14 +194,60 @@ export class QtFile {
             });
         })
     }
+
+    listDir(path: string): Promise<Array<string>> {
+        return new Promise((resolve, reject) => {
+            this.qtFileSystem.listDir(path, (files: Array<string>) => {
+                if (files) {
+                    resolve(files);
+                } else {
+                    reject("list dir " + path + " fail");
+                }
+            })
+        })
+    }
+
+    mkdir(path: string): Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            this.qtFileSystem.mkdir(path, (result: string) => {
+                if (result === SUCCEED) {
+                    resolve(true);
+                } else {
+                    resolve(false);
+                }
+            })
+        })
+    }
+
+    rm(path: string): Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            this.qtFileSystem.rm(path, (result: string) => {
+                if (result === SUCCEED) {
+                    resolve(true);
+                } else {
+                    reject(result);
+                }
+            })
+        })
+    }
 }
 
 export class QtDatabase {
     private qtSipDatabase: any;
 
-    constructor() {
+    private static mInstance: QtDatabase = null;
+
+    public static getInstance() {
+        if (!this.mInstance) {
+            this.mInstance = new QtDatabase();
+        }
+
+        return this.mInstance;
+    }
+
+    private constructor() {
         console.log("constructor database from pjsua");
-        this.qtSipDatabase = g_qtDatabase;
+        this.qtSipDatabase = g_channel.objects.database;;
     }
 
     init(): Promise<boolean> {
@@ -56,61 +266,62 @@ export class Buddy {
         this.qtSipBuddy = buddy;
     }
 
-    sendInstantMessage(message: string) {
-        this.qtSipBuddy.sendInstantMessage(message);
+    sendInstantMessage(message: string): Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            this.qtSipBuddy.sendInstantMessage(message, (result: string) => {
+                if (result === SUCCEED) {
+                    resolve(true);
+                } else {
+                    reject(result);
+                }
+            })
+        })
     }
 }
 
 export interface CallInfo {
-    id:string;
-    state:number
+    idString: string;
+    state: number;
+    lastStatusCode:number;
 }
 
-var g_sipCallList:Map<string, Call> = new Map<string, Call>();
+//var g_sipCallList:Map<string, Call> = new Map<string, Call>();
 
 export class Call {
     protected qtSipCall: any;
     protected account: Account;
-    protected callIdString:string;
+    protected callIdString: string;
 
-    onStateChanged: (state: number) => void = null;
+    onStateChanged: (callInfo: CallInfo) => void = null;
+
     constructor(account: Account, call: any) {
         this.account = account;
         this.qtSipCall = call;
 
-        this.qtSipCall.getCallId((id:string) => {
+        this.qtSipCall.getCallId((id: string) => {
             console.log("Get Call Id:" + id);
             this.callIdString = id;
-            g_sipCallList.set(id, this);
         });
 
-        this.qtSipCall.callStateChanged.connect(this.callStateChangedSlot);
-    }
-
-    private callStateChangedSlot(callInfo: CallInfo) {
-        console.log("call state, id" + callInfo.id + ",state:" + callInfo.state);
-        if (g_sipCallList.has(callInfo.id)) {
-            let call:Call = g_sipCallList.get(callInfo.id);
-            if (call.onStateChanged) {
+        let self = this;
+        this.qtSipCall.callStateChanged.connect((callInfo: CallInfo) => {
+            if (self.onStateChanged) {
                 console.log("send call state to sip service");
-                call.onStateChanged(callInfo.state);
+                self.onStateChanged(callInfo);
             }
-        }
+        });
     }
 
-    getCallId():Promise<string> {
+    getCallId(): Promise<string> {
         return new Promise(resolve => {
             resolve(this.callIdString);
         })
     }
 
-    hangup():Promise<boolean> {
+    hangup(): Promise<boolean> {
         return new Promise((resolve, reject) => {
-            this.qtSipCall.hangup((result:string) => {
+            this.qtSipCall.hangup((result: string) => {
                 if (result === SUCCEED) {
-                    if (g_sipCallList.has(this.callIdString)) {
-                        g_sipCallList.delete(this.callIdString);
-                    }
                     resolve(true);
                 } else {
                     reject(result);
@@ -118,34 +329,42 @@ export class Call {
             });
         })
     }
+
+    sendInstantMessage(message:string):Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            this.qtSipCall.sendInstantMessage(message, (result:string) => {
+                if (result === SUCCEED) {
+                    resolve(true);
+                } else {
+                    reject(result);
+                }
+            });
+        })
+        
+    }
 }
 
 export class FileCall extends Call {
-    onPlayStateChanged: (songPath: string, type:number, param:number) => void = null;
+    onPlayStateChanged: (songPath: string, type: number, param: number) => void = null;
 
     constructor(account: Account, call: any) {
         super(account, call);
-
-        this.qtSipCall.playState.connect(this.playStateChangedSlot);
-    }
-
-    private playStateChangedSlot(callIdString:string, songPath: string, type:number, param:number) {
-        if (g_sipCallList.has(callIdString)) {
-            let call:FileCall = <FileCall>g_sipCallList.get(callIdString);
-            if (call.onPlayStateChanged) {
-                call.onPlayStateChanged(songPath, type, param);
+        let self = this;
+        this.qtSipCall.playState.connect((songPath: string, type: number, param: number) => {
+            if (self.onPlayStateChanged) {
+                self.onPlayStateChanged(songPath, type, param);
             }
-        }
+        });
     }
 
-    play(songPath:string):Promise<boolean> {
+    play(songPath: string): Promise<boolean> {
         return new Promise((resolve, rejects) => {
-            this.qtSipCall.play(songPath, (result:string) => {
+            this.qtSipCall.play(songPath, (result: string) => {
                 if (result == SUCCEED) {
                     resolve(true);
                 }
                 else {
-                    rejects("Play " + songPath + " fail");
+                    rejects("Play " + songPath + " fail:" + result);
                 }
             })
         })
@@ -162,10 +381,24 @@ export class Account { //
     onStateChanged: (state: AccountState, stateCode?: number) => void;
     onInstantMessage: (fromUri: string, message: string) => void;
 
+    private regStatechangedSlot:any;
+    private instantMessageSlot:any;
     constructor(account: any) {
         this.state = AccountState.OFFLINE;
         this.qtSipAccount = account;
-        this.qtSipAccount.regStateChanged.connect(this.onAccountRegStateChanged);
+
+        let self = this;
+        this.regStatechangedSlot = (regIsActive: boolean, stateCode: number) => {
+            self.onAccountRegStateChanged(regIsActive, stateCode);
+        };
+        this.instantMessageSlot = (fromUri: string, message: string) => {
+            console.log("Get instant message from " + fromUri + ",msg" + message);
+            if (self.onInstantMessage) {
+                self.onInstantMessage(fromUri, message);
+            }
+        };
+
+        this.qtSipAccount.regStateChanged.connect(this.regStatechangedSlot);
         this.qtSipAccount.instantMessage.connect(this.instantMessageSlot);
     }
 
@@ -180,9 +413,9 @@ export class Account { //
     private onAccountRegStateChanged(regIsActive: boolean, stateCode: number) {
         console.log("regIsActive:" + regIsActive + ", status code:" + stateCode);
         if (regIsActive && stateCode == 200) {
-            g_qtSipAccount.changeState(AccountState.REGISTED, stateCode);
+            this.changeState(AccountState.REGISTED, stateCode);
         } else {
-            g_qtSipAccount.changeState(AccountState.OFFLINE, stateCode);
+            this.changeState(AccountState.OFFLINE, stateCode);
         }
     }
 
@@ -233,13 +466,6 @@ export class Account { //
         })
     }
 
-    instantMessageSlot(fromUri: string, message: string) {
-        console.log("Get instant message from " + fromUri + ",msg" + message);
-        if (g_qtSipAccount.onInstantMessage) {
-            g_qtSipAccount.onInstantMessage(fromUri, message);
-        }
-    }
-
     /**
  * Start a new SIP call to destination.
  * @return when the outbound call has been connected.
@@ -282,25 +508,51 @@ export class Account { //
             })
         });
     }
+
+    remove() {
+        this.qtSipAccount.regStateChanged.disconnect(this.regStatechangedSlot);
+        this.qtSipAccount.instantMessage.disconnect(this.instantMessageSlot);
+    }
 }
 
 export interface AudioDevInfo {
-    name:string;
-    inputCount:number;
-    outputCount:number;
-    driver:string;
+    name: string;
+    inputCount: number;
+    outputCount: number;
+    driver: string;
+}
+
+export class SipPlayer {
+    private qtSipPlayer: any;
+    constructor(player: any) {
+
+    }
 }
 
 export class PJSIP {
     public account: Account;
     private pjsip: any;
 
+    private static mInstance: PJSIP = null;
+
+    public static getInstance() {
+        if (!this.mInstance) {
+            this.mInstance = new PJSIP();
+        }
+
+        return this.mInstance;
+    }
+
+    private constructor() {
+
+    }
+
     init(port: number): Promise<string> {
         console.log("Call PJSIP.prototype.init, try qt init");
         return new Promise((resolve, reject) => {
             let self = this;
-            self.pjsip = g_qtPjsip;
-            self.account = g_qtSipAccount;
+            self.pjsip = g_channel.objects.pjsip;;
+            self.account = new Account(self.pjsip.account);;
 
             if (self.pjsip) {
                 self.pjsip.init(port, function (result: string) {
@@ -314,13 +566,18 @@ export class PJSIP {
 
     }
 
-    disconnect() {
-        this.pjsip.disconnect();
+    disconnect():Promise<void> {
+        return new Promise((resolve) => {
+            this.pjsip.disconnect((result:string) => {
+                this.account.remove();
+                resolve();
+            });
+        })
     }
 
-    enumDevs():Promise<Array<AudioDevInfo>> {
+    enumDevs(): Promise<Array<AudioDevInfo>> {
         return new Promise((resolve, reject) => {
-            this.pjsip.enumDevs((devs:Array<any>) => {
+            this.pjsip.enumDevs((devs: Array<any>) => {
                 /*
                 for (let dev of devs) {
                     console.log("id:" + dev.id + ",name:" + dev.name + ",inputCount:" + dev.inputCount + ",driver:"+ dev.driver);
