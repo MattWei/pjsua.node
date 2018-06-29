@@ -1,2 +1,6 @@
 dist/test
 node_modules
+npm-debug.log
+dist/Pjsua.d.ts
+dist/Pjsua.js
+dist/Pjsua.js.map

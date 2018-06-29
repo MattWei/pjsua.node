@@ -2,20 +2,22 @@ import { QWebChannel } from "./qwebchannel";
 import { rejects } from "assert";
 import { resolve } from "dns";
 
-var g_channel:any;
-
-//var g_qtPjsip: any;
-//var g_qtSipAccount: Account;
-//var g_qtDatabase: any;
-//var g_qtFileSystem: any;
-//var g_qtPlayer: any;
-//var g_qtRecorder: any;
-//var g_qtApp: any;
+var g_channel: any;
 
 var SUCCEED: string = "OK";
 
+export enum PJSipInvState {
+    PJSIP_INV_STATE_NULL,	    /**< Before INVITE is sent or received  */
+    PJSIP_INV_STATE_CALLING,	    /**< After INVITE is sent		    */
+    PJSIP_INV_STATE_INCOMING,	    /**< After INVITE is received.	    */
+    PJSIP_INV_STATE_EARLY,	    /**< After response with To tag.	    */
+    PJSIP_INV_STATE_CONNECTING,	    /**< After 2xx is sent/received.	    */
+    PJSIP_INV_STATE_CONFIRMED,	    /**< After ACK is sent/received.	    */
+    PJSIP_INV_STATE_DISCONNECTED,   /**< Session is terminated.		    */
+}
+
 export class App {
-    private qtApp:any;
+    private qtApp: any;
     private static mInstance: App = null;
     onAppClose: () => void;
 
@@ -58,23 +60,11 @@ export class App {
 var qtWebChannel = new QWebChannel(qt.webChannelTransport, function (channel: any) {
     console.log("Run on QWebChannel create");
     g_channel = channel;
-
-
     App.getInstance().setCloseEventSlot();
-
-    //g_qtDatabase = channel.objects.database;
-
-    //g_qtPjsip = channel.objects.pjsip;
-    //g_qtSipAccount = new Account(g_qtPjsip.account);
-
-    //g_qtFileSystem = channel.objects.fileSystem;
-
-    //g_qtPlayer = channel.objects.player;
-    //g_qtRecorder = channel.objects.recorder;
 });
 
 export class QtSipPlayer {
-    private qtPlayer:any = null;
+    private qtPlayer: any = null;
     onPlayStateChanged: (songPath: string, type: number, param: number) => void = null;
 
     private static mInstance: QtSipPlayer = null;
@@ -123,7 +113,7 @@ export class QtSipPlayer {
 }
 
 export class QtSipRecorder {
-    private qtRecorder:any;
+    private qtRecorder: any;
 
     private static mInstance: QtSipRecorder = null;
 
@@ -151,8 +141,6 @@ export class QtSipRecorder {
         })
     }
 
-
-
     stop(): Promise<any> {
         return new Promise((resolve, reject) => {
             this.qtRecorder.stop((result: string) => {
@@ -168,7 +156,7 @@ export class QtSipRecorder {
 }
 
 export class QtFile {
-    private qtFileSystem:any = null;
+    private qtFileSystem: any = null;
     private static mInstance: QtFile = null;
 
     public static getInstance() {
@@ -282,17 +270,17 @@ export class Buddy {
 export interface CallInfo {
     idString: string;
     state: number;
-    lastStatusCode:number;
+    lastStatusCode: number;
 }
-
-//var g_sipCallList:Map<string, Call> = new Map<string, Call>();
 
 export class Call {
     protected qtSipCall: any;
     protected account: Account;
     protected callIdString: string;
+    protected state:PJSipInvState = PJSipInvState.PJSIP_INV_STATE_NULL;
 
-    onStateChanged: (callInfo: CallInfo) => void = null;
+    onStateChanged: (state: string, reason:string) => void = null;
+    onInstantMessage: (fromUri: string, message: string) => void;
 
     constructor(account: Account, call: any) {
         this.account = account;
@@ -305,11 +293,37 @@ export class Call {
 
         let self = this;
         this.qtSipCall.callStateChanged.connect((callInfo: CallInfo) => {
+            console.log("qtSipCall.callStateChanged slot:" + callInfo.state + ", last status code:" + callInfo.lastStatusCode);
+            let stateString = "confirmed";
+            let reason = "";
+            if (callInfo.state === PJSipInvState.PJSIP_INV_STATE_CONFIRMED) {
+                stateString = "confirmed";
+            } else if (callInfo.state === PJSipInvState.PJSIP_INV_STATE_DISCONNECTED) {
+                //Not confirmed before
+                console.log("Self state:" + self.state);
+                if (self.state < PJSipInvState.PJSIP_INV_STATE_CONFIRMED) {
+                    stateString = "callFail";
+                    if (callInfo.lastStatusCode != 200) {
+                        reason = "Error code:" + callInfo.lastStatusCode;
+                    }
+                } else {
+                    stateString = "disconnect";
+                }
+            }
+
+            self.state = callInfo.state;
             if (self.onStateChanged) {
-                console.log("send call state to sip service");
-                self.onStateChanged(callInfo);
+                console.log("send call state to sip service:" + stateString);
+                self.onStateChanged(stateString, reason);
             }
         });
+
+        this.qtSipCall.instantMessage.connect( (fromUri: string, message: string) => {
+            console.log("Get instant message from " + fromUri + ",msg" + message);
+            if (self.onInstantMessage) {
+                self.onInstantMessage(fromUri, message);
+            }
+        })
     }
 
     getCallId(): Promise<string> {
@@ -330,9 +344,9 @@ export class Call {
         })
     }
 
-    sendInstantMessage(message:string):Promise<boolean> {
+    sendInstantMessage(message: string): Promise<boolean> {
         return new Promise((resolve, reject) => {
-            this.qtSipCall.sendInstantMessage(message, (result:string) => {
+            this.qtSipCall.sendInstantMessage(message, (result: string) => {
                 if (result === SUCCEED) {
                     resolve(true);
                 } else {
@@ -340,7 +354,7 @@ export class Call {
                 }
             });
         })
-        
+
     }
 }
 
@@ -377,12 +391,12 @@ export enum AccountState { OFFLINE, REGISTING, REGISTED };
 export class Account { // 
     private qtSipAccount: any;
     private state: AccountState = AccountState.OFFLINE;
-
+    
     onStateChanged: (state: AccountState, stateCode?: number) => void;
     onInstantMessage: (fromUri: string, message: string) => void;
 
-    private regStatechangedSlot:any;
-    private instantMessageSlot:any;
+    private regStatechangedSlot: any;
+    private instantMessageSlot: any;
     constructor(account: any) {
         this.state = AccountState.OFFLINE;
         this.qtSipAccount = account;
@@ -475,17 +489,24 @@ export class Account { //
  */
     makeAudioDeviceCall(destination: string, param: string, audioDeviceId: number, songlist?: Array<string>): Promise<Call> {
         console.log('AccountExt.makeCall, des:' + destination + ", audioDeviceId:" + audioDeviceId);
+        let self = this;
         return new Promise((resolve, reject) => {
             if (this.state !== AccountState.REGISTED)
                 return reject(new Error('not registered'));
 
             console.log("Make call to:" + destination + ",param:" + param + ",audioDevId:" + audioDeviceId);
+
+            let makeCallFailSlot = (errorMsg: string): void => {
+                console.log("Make AudioDevice call fail:" + errorMsg);
+                this.qtSipAccount.makeCallFail.disconnect(makeCallFailSlot);
+                reject(errorMsg);
+            };
+
+            this.qtSipAccount.makeCallFail.connect(makeCallFailSlot);
             this.qtSipAccount.makeAudioDeviceCall(destination, param, audioDeviceId, (call: any) => {
                 if (call) {
                     let callExt = new Call(this, call);
                     resolve(callExt);
-                } else {
-                    reject("Call fail");
                 }
             })
         });
@@ -498,12 +519,19 @@ export class Account { //
                 return reject(new Error('not registered'));
 
             console.log("Make call to:" + destination + ",param:" + param + ",song:" + songPath);
+
+            let makeCallFailSlot = (errorMsg: string): void => {
+                console.log("Make File call fail:" + errorMsg);
+                this.qtSipAccount.makeCallFail.disconnect(makeCallFailSlot);
+                reject(errorMsg);
+            };
+
+            this.qtSipAccount.makeCallFail.connect(makeCallFailSlot);
+
             this.qtSipAccount.makeFilePlayCall(destination, param, songPath, (call: any) => {
                 if (call) {
                     let callExt = new FileCall(this, call);
                     resolve(callExt);
-                } else {
-                    reject("Call fail");
                 }
             })
         });
@@ -566,9 +594,9 @@ export class PJSIP {
 
     }
 
-    disconnect():Promise<void> {
+    disconnect(): Promise<void> {
         return new Promise((resolve) => {
-            this.pjsip.disconnect((result:string) => {
+            this.pjsip.disconnect((result: string) => {
                 this.account.remove();
                 resolve();
             });
