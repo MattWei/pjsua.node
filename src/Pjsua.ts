@@ -25,8 +25,7 @@ export {
     Media,
 };
 
-//const debug = DEBUG('PJSUA:main');
-const debug = console.log;
+const debug = DEBUG('PJSUA:main');
 
 export interface PlayerConfig {
     player?: {
