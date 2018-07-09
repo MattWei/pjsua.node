@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { EventEmitter } from 'events';
 import { Sipster, TransportConfig, EpConfig, AccountConfig, Call, CallInfo, Account, AudioMediaPlayer, AudioMediaRecorder, Media, Buddy, AudioDevInfo } from 'sipster.ts';
-export { TransportConfig, EpConfig, AccountConfig, CallInfo, Media };
+export { TransportConfig, EpConfig, AccountConfig, CallInfo, Media, AudioMediaPlayer, AudioMediaRecorder };
 export interface PlayerConfig {
     player?: {
         /** filename to play while calling */
@@ -49,7 +49,7 @@ export declare class CallExt extends EventEmitter {
     constructor(account: AccountExt, call: Call, playerConfig?: PlayerConfig);
     onConfirmed(): void;
     onDtmf(digit: string): void;
-    onDisconnected(): void;
+    onDisconnected(lastStatusCode: number): void;
     onMedia(medias: Media[]): void;
     /**
      * For incoming calls, this responds to the INVITE with an optional
@@ -112,7 +112,15 @@ export declare class AccountExt extends EventEmitter {
      * @reject {Error}  call in progress
      * @reject {Error}  disconnected
      */
-    makeCall(destination: string, param?: string, audioDeviceId?: number, playerConfig?: PlayerConfig): Promise<CallExt>;
+    makeCall(destination: string, param: string, audioDeviceId: number, startTonePath?: string, stopTonePath?: string): Promise<CallExt>;
+    /**
+     * Start a new SIP call to destination.
+     * @return when the outbound call has been connected.
+     * @reject {Error}  not registered
+     * @reject {Error}  call in progress
+     * @reject {Error}  disconnected
+     */
+    makeFileCall(destination: string, param?: string, playerConfig?: PlayerConfig): Promise<CallExt>;
     /**
      * Update registration or perform unregistration.
      * You only need to call this method if you want to manually update the
@@ -130,13 +138,14 @@ export declare class AccountExt extends EventEmitter {
  */
 export declare class Pjsua {
     private readonly _sipster;
-    private readonly _playerConfig;
-    private readonly _transport;
+    private _playerConfig;
+    private _transport;
     private _account?;
     protected readonly sipster: Sipster;
     readonly account: AccountExt;
     readonly playerConfig: PlayerConfig;
     constructor(config: PjsuaConfigs);
+    disconnect(): Promise<any>;
     protected onRegistered(): void;
     protected onRegistering(): void;
     protected onUnregistering(): void;

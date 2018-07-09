@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const events_1 = require("events");
 const sipster_ts_1 = require("sipster.ts");
+exports.AudioMediaPlayer = sipster_ts_1.AudioMediaPlayer;
+exports.AudioMediaRecorder = sipster_ts_1.AudioMediaRecorder;
 exports.Media = sipster_ts_1.Media;
 //const debug = DEBUG('PJSUA:main');
 const debug = console.log;
@@ -43,7 +45,7 @@ class CallExt extends events_1.EventEmitter {
         this._call = call;
         call.on('dtmf', digit => this.onDtmf(digit));
         call.on('media', medias => this.onMedia(medias));
-        call.on('state', state => {
+        call.on('state', (state, lastStatusCode) => {
             switch (state) {
                 case 'connecting':
                     return this.onConnecting();
@@ -52,7 +54,7 @@ class CallExt extends events_1.EventEmitter {
                 case 'disconnected':
                     console.log("call on state disconnected");
                     call.removeAllListeners();
-                    return this.onDisconnected();
+                    return this.onDisconnected(lastStatusCode);
             }
         });
         if (playerConfig)
@@ -62,7 +64,7 @@ class CallExt extends events_1.EventEmitter {
         if (this._playerConfig.player) {
             this._player = sipster_ts_1.Sipster.instance().createPlayer(); //this._playerConfig.player.filename
             this._player.on('playerStatus', (songPath, type, param) => {
-                console.log("CallExt::playerStatus, song:" + songPath + ",type" + type + ",param" + param);
+                //console.log("CallExt::playerStatus, song:" + songPath + ",type" + type + ",param" + param);
                 this.emit('playerStatus', songPath, type, param);
             });
         }
@@ -77,7 +79,7 @@ class CallExt extends events_1.EventEmitter {
         console.log(`CallExt.onDtmf ${digit}`);
         this.emit('dtmf', digit);
     }
-    onDisconnected() {
+    onDisconnected(lastStatusCode) {
         console.log('CallExt.onDisconnected');
         if (this.medias) {
             for (const media of this.medias) {
@@ -87,7 +89,7 @@ class CallExt extends events_1.EventEmitter {
         if (this._player) {
             this._player.close();
         }
-        this.emit('disconnected');
+        this.emit('disconnected', lastStatusCode);
     }
     onMedia(medias) {
         console.log(`CallExt.onMedia ${medias.length}`);
@@ -130,13 +132,13 @@ class CallExt extends events_1.EventEmitter {
         console.log('CallExt.hangup');
         return new Promise((resolve, reject) => {
             this.call.removeAllListeners();
-            this.call.on('state', (state) => {
+            this.call.on('state', (state, lastStatusCode) => {
                 debug('AccountExt.hangup.call', state);
                 switch (state) {
                     case 'disconnected':
                         console.log("call on hangup disconnected");
                         this.call.removeAllListeners();
-                        this.onDisconnected();
+                        this.onDisconnected(lastStatusCode);
                         return resolve();
                 }
             });
@@ -181,7 +183,7 @@ class BuddyExt extends events_1.EventEmitter {
         this.emit('buddyState', uri, stateText);
     }
     sendInstantMessage(message) {
-        debug('BuddyExt.answer');
+        debug('BuddyExt.sendInstantMessage' + message);
         this._buddy.sendInstantMessage(message);
     }
     subscribePresence(subscribe) {
@@ -200,18 +202,9 @@ exports.BuddyExt = BuddyExt;
  * @fires AccountExt#call
  */
 class AccountExt extends events_1.EventEmitter {
-    //private _call?: CallExt;
     get account() {
         return this._account;
     }
-    /*
-        get isCallInProgress(): boolean {
-            return !!this._call;
-        }
-        get call(): CallExt {
-            return this._call;
-        }
-    */
     get playerConfig() {
         return this._playerConfig;
     }
@@ -267,23 +260,29 @@ class AccountExt extends events_1.EventEmitter {
      * @reject {Error}  call in progress
      * @reject {Error}  disconnected
      */
-    makeCall(destination, param, audioDeviceId, playerConfig) {
+    makeCall(destination, param, audioDeviceId, startTonePath, stopTonePath) {
+        debug('AccountExt.makeCall, des:' + destination + ", startTonePath:" + startTonePath + ",stopTonePath:" + stopTonePath);
+        return new Promise((resolve, reject) => {
+            if (this.state !== 'registered')
+                return reject(new Error('not registered'));
+            const call = this.account.makeCall(destination, param, audioDeviceId, startTonePath, stopTonePath);
+            const callExt = new CallExt(this, call, null);
+            resolve(callExt);
+        });
+    }
+    /**
+     * Start a new SIP call to destination.
+     * @return when the outbound call has been connected.
+     * @reject {Error}  not registered
+     * @reject {Error}  call in progress
+     * @reject {Error}  disconnected
+     */
+    makeFileCall(destination, param, playerConfig) {
         debug('AccountExt.makeCall, des:' + destination + ", playerConfig:" + playerConfig);
         return new Promise((resolve, reject) => {
             if (this.state !== 'registered')
                 return reject(new Error('not registered'));
-            //if (this.isCallInProgress)
-            //    return reject(new Error('call in progress'));
-            /*
-            let isAuto = true;
-            if (playerConfig) {
-                isAuto = false;
-            }
-            */
-            if (audioDeviceId) {
-                console.log("Use device:" + audioDeviceId + " to record");
-            }
-            const call = this.account.makeCall(destination, param, audioDeviceId);
+            const call = this.account.makeCall(destination, param, -1);
             const callExt = new CallExt(this, call, playerConfig);
             resolve(callExt);
         });
@@ -324,8 +323,12 @@ class Pjsua {
     }
     constructor(config) {
         this._playerConfig = config.player;
-        this._sipster = sipster_ts_1.Sipster.instance(config.endpoint);
+        this._sipster = sipster_ts_1.Sipster.instance();
+        this._sipster.init(config.endpoint);
         this._transport = new this.sipster.Transport(config.transport);
+    }
+    disconnect() {
+        return this._sipster.disconnect();
     }
     onRegistered() {
         debug('Pjsua.onRegistered');
