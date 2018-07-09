@@ -23,6 +23,8 @@ export {
     AccountConfig,
     CallInfo,
     Media,
+    AudioMediaPlayer,
+    AudioMediaRecorder
 };
 
 const debug = DEBUG('PJSUA:main');
@@ -105,7 +107,7 @@ export class CallExt extends EventEmitter {
 
         call.on('dtmf', digit => this.onDtmf(digit));
         call.on('media', medias => this.onMedia(medias));
-        call.on('state', state => {
+        call.on('state', (state:string, lastStatusCode:number) => {
             switch (state) {
                 case 'connecting':
                     return this.onConnecting();
@@ -114,7 +116,7 @@ export class CallExt extends EventEmitter {
                 case 'disconnected':
                     console.log("call on state disconnected");
                     call.removeAllListeners();
-                    return this.onDisconnected();
+                    return this.onDisconnected(lastStatusCode);
             }
         });
 
@@ -127,7 +129,7 @@ export class CallExt extends EventEmitter {
             this._player = Sipster.instance().createPlayer(); //this._playerConfig.player.filename
 
             this._player.on('playerStatus', (songPath: string, type: number, param: number) => {
-                console.log("CallExt::playerStatus, song:" + songPath + ",type" + type + ",param" + param);
+                //console.log("CallExt::playerStatus, song:" + songPath + ",type" + type + ",param" + param);
 
                 this.emit('playerStatus', songPath, type, param);
             })
@@ -145,7 +147,7 @@ export class CallExt extends EventEmitter {
         console.log(`CallExt.onDtmf ${digit}`);
         this.emit('dtmf', digit);
     }
-    onDisconnected(): void {
+    onDisconnected(lastStatusCode:number): void {
         console.log('CallExt.onDisconnected');
         if (this.medias) {
             for (const media of this.medias) {
@@ -156,7 +158,7 @@ export class CallExt extends EventEmitter {
         if (this._player) {
             this._player.close();
         }
-        this.emit('disconnected');
+        this.emit('disconnected', lastStatusCode);
     }
 
     onMedia(medias: Media[]): void {
@@ -198,13 +200,13 @@ export class CallExt extends EventEmitter {
         console.log('CallExt.hangup');
         return new Promise((resolve, reject) => {
             this.call.removeAllListeners();
-            this.call.on('state', (state: string) => {
+            this.call.on('state', (state: string, lastStatusCode:number) => {
                 debug('AccountExt.hangup.call', state);
                 switch (state) {
                     case 'disconnected':
                         console.log("call on hangup disconnected");
                         this.call.removeAllListeners();
-                        this.onDisconnected();
+                        this.onDisconnected(lastStatusCode);
                         return resolve();
                 }
             });
@@ -258,7 +260,7 @@ export class BuddyExt extends EventEmitter {
     }
 
     sendInstantMessage(message: string): void {
-        debug('BuddyExt.answer');
+        debug('BuddyExt.sendInstantMessage' + message);
         this._buddy.sendInstantMessage(message);
     }
 
@@ -278,25 +280,15 @@ export class BuddyExt extends EventEmitter {
  * @fires AccountExt#call
  */
 export class AccountExt extends EventEmitter {
-
     private readonly _ua: Pjsua;
     private readonly _account: Account;
     private readonly _playerConfig: PlayerConfig;
     private _state: string;
 
-    //private _call?: CallExt;
-
     get account(): Account {
         return this._account;
     }
-    /*
-        get isCallInProgress(): boolean {
-            return !!this._call;
-        }
-        get call(): CallExt {
-            return this._call;
-        }
-    */
+
     get playerConfig(): PlayerConfig {
         return this._playerConfig;
     }
@@ -357,24 +349,32 @@ export class AccountExt extends EventEmitter {
      * @reject {Error}  call in progress
      * @reject {Error}  disconnected
      */
-    makeCall(destination: string, param?: string, audioDeviceId?:number, playerConfig?: PlayerConfig): Promise<CallExt> {
+    makeCall(destination: string, param: string, audioDeviceId:number, startTonePath?: string, stopTonePath?:string): Promise<CallExt> {
+        debug('AccountExt.makeCall, des:' + destination + ", startTonePath:" + startTonePath + ",stopTonePath:" + stopTonePath);
+        return new Promise((resolve, reject) => {
+            if (this.state !== 'registered')
+                return reject(new Error('not registered'));
+            
+            const call = this.account.makeCall(destination, param, audioDeviceId, startTonePath, stopTonePath);
+            const callExt = new CallExt(this, call, null);
+            resolve(callExt);
+        });
+    }
+
+    /**
+     * Start a new SIP call to destination.
+     * @return when the outbound call has been connected.
+     * @reject {Error}  not registered
+     * @reject {Error}  call in progress
+     * @reject {Error}  disconnected
+     */
+    makeFileCall(destination: string, param?: string, playerConfig?: PlayerConfig): Promise<CallExt> {
         debug('AccountExt.makeCall, des:' + destination + ", playerConfig:" + playerConfig);
         return new Promise((resolve, reject) => {
             if (this.state !== 'registered')
                 return reject(new Error('not registered'));
-            //if (this.isCallInProgress)
-            //    return reject(new Error('call in progress'));
-            /*
-            let isAuto = true;
-            if (playerConfig) {
-                isAuto = false;
-            }
-            */
-            if (audioDeviceId) {
-                console.log("Use device:" + audioDeviceId + " to record");
-            }
             
-            const call = this.account.makeCall(destination, param, audioDeviceId);
+            const call = this.account.makeCall(destination, param, -1);
             const callExt = new CallExt(this, call, playerConfig);
             resolve(callExt);
         });
@@ -408,8 +408,8 @@ export class AccountExt extends EventEmitter {
  */
 export class Pjsua {
     private readonly _sipster: Sipster;
-    private readonly _playerConfig: PlayerConfig;
-    private readonly _transport: Transport;
+    private _playerConfig: PlayerConfig;
+    private _transport: Transport;
     private _account?: AccountExt;
 
     protected get sipster(): Sipster {
@@ -426,8 +426,13 @@ export class Pjsua {
 
     constructor(config: PjsuaConfigs) {
         this._playerConfig = config.player;
-        this._sipster = Sipster.instance(config.endpoint);
+        this._sipster = Sipster.instance();
+        this._sipster.init(config.endpoint);
         this._transport = new this.sipster.Transport(config.transport);
+    }
+
+    disconnect():Promise<any> {
+        return this._sipster.disconnect();
     }
 
     protected onRegistered(): void {
