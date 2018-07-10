@@ -9,8 +9,8 @@
     "type": "git",
     "url": "git://github.com/minoruta/pjsua.node.git"
   },
-  "main": "./dist/src/Pjsua.js",
-  "types": "./dist/src/Pjsua.d.ts",
+  "main": "./dist/Pjsua.js",
+  "types": "./dist/Pjsua.d.ts",
   "scripts": {
     "build": "npm run build-ts && npm run tslint",
     "test": "jest --forceExit",
