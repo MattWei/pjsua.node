@@ -69,7 +69,7 @@ export class CallExt extends EventEmitter {
     private readonly _recorder?: AudioMediaRecorder;
     private _medias?: Media[];
 
-    get callInfo():CallInfo {
+    get callInfo(): CallInfo {
         return this._call.callInfo;
     }
     
@@ -107,7 +107,7 @@ export class CallExt extends EventEmitter {
 
         call.on('dtmf', digit => this.onDtmf(digit));
         call.on('media', medias => this.onMedia(medias));
-        call.on('state', (state:string, lastStatusCode:number) => {
+        call.on('state', (state: string, lastStatusCode: number) => {
             switch (state) {
                 case 'connecting':
                     return this.onConnecting();
