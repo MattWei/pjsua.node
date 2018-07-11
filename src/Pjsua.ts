@@ -64,15 +64,15 @@ export interface PjsuaConfigs {
 export class CallExt extends EventEmitter {
     private readonly _call: Call;
     private readonly _account: AccountExt;
-    private readonly _playerConfig: PlayerConfig;
-    private readonly _player?: AudioMediaPlayer;
-    private readonly _recorder?: AudioMediaRecorder;
-    private _medias?: Media[];
+    // private readonly _playerConfig: PlayerConfig;
+    // private readonly _player?: AudioMediaPlayer;
+    // private readonly _recorder?: AudioMediaRecorder;
+    // private _medias?: Media[];
 
     get callInfo(): CallInfo {
         return this._call.callInfo;
     }
-    
+
     get call(): Call {
         return this._call;
     }
@@ -81,13 +81,15 @@ export class CallExt extends EventEmitter {
         return this._account;
     }
 
+    /*
     get medias(): Media[] {
         return this._medias;
     }
     set medias(medias: Media[]) {
         this._medias = medias;
     }
-
+    */
+    /*
     protected get player(): AudioMediaPlayer {
         return this._player;
     }
@@ -95,6 +97,7 @@ export class CallExt extends EventEmitter {
     protected get recorder(): AudioMediaRecorder {
         return this._recorder;
     }
+    */
 
     protected onConnecting(): void {
         debug('AccountExt.onConnecting');
@@ -120,24 +123,26 @@ export class CallExt extends EventEmitter {
             }
         });
 
+        /*
         if (playerConfig)
             this._playerConfig = playerConfig;
         else
             this._playerConfig = account.playerConfig;
 
         if (this._playerConfig.player) {
-            this._player = Sipster.instance().createPlayer(); //this._playerConfig.player.filename
+            // this._playerConfig.player.filename
+            this._player = Sipster.instance().createPlayer();
 
             this._player.on('playerStatus', (songPath: string, type: number, param: number) => {
-                //console.log("CallExt::playerStatus, song:" + songPath + ",type" + type + ",param" + param);
-
+                // console.log("CallExt::playerStatus, song:" + songPath + ",type" + type + ",param" + param);
                 this.emit('playerStatus', songPath, type, param);
-            })
+            });
         }
 
         if (this._playerConfig.recorder)
             this._recorder = Sipster.instance()
                 .createRecorder(this._playerConfig.recorder.filename);
+        */
     }
 
     onConfirmed(): void {
@@ -147,8 +152,9 @@ export class CallExt extends EventEmitter {
         console.log(`CallExt.onDtmf ${digit}`);
         this.emit('dtmf', digit);
     }
-    onDisconnected(lastStatusCode:number): void {
+    onDisconnected(lastStatusCode: number): void {
         console.log('CallExt.onDisconnected');
+        /*
         if (this.medias) {
             for (const media of this.medias) {
                 media.close();
@@ -158,6 +164,7 @@ export class CallExt extends EventEmitter {
         if (this._player) {
             this._player.close();
         }
+        */
         this.emit('disconnected', lastStatusCode);
     }
 
@@ -166,10 +173,11 @@ export class CallExt extends EventEmitter {
         if (medias.length <= 0)
             return;
 
+        /*
         if (this.player) {
             if (this._playerConfig.player) {
                 console.log("CallExt::onMedia, Play " + this._playerConfig.player.filename);
-                this.player.playSong(this._playerConfig.player.filename);
+                // this.player.playSong(this._playerConfig.player.filename);
             }
 
             this.player.startTransmitTo(medias[0]);
@@ -178,6 +186,7 @@ export class CallExt extends EventEmitter {
         if (this.recorder)
             (medias[0] as AudioMedia).startTransmitTo(this.recorder);
         this.medias = medias;
+        */
     }
 
     /**
@@ -189,18 +198,11 @@ export class CallExt extends EventEmitter {
         this.call.answer(statusCode, reason);
     }
 
-    /**
- * Hangs up the call with an optional statusCode (defaults to 603)
- * and optional reason phrase. This function is different than answering
- * the call with 3xx-6xx response (with answer()), in that this function
- * will hangup the call regardless of the state and role of the call,
- * while answer() only works with incoming calls on EARLY state.
- */
     hangup(statusCode?: number, reason?: string): Promise<void> {
         console.log('CallExt.hangup');
         return new Promise((resolve, reject) => {
             this.call.removeAllListeners();
-            this.call.on('state', (state: string, lastStatusCode:number) => {
+            this.call.on('state', (state: string, lastStatusCode: number) => {
                 debug('AccountExt.hangup.call', state);
                 switch (state) {
                     case 'disconnected':
@@ -210,23 +212,26 @@ export class CallExt extends EventEmitter {
                         return resolve();
                 }
             });
-
+            /*
             if (this.medias && this.medias.length > 0) {
                 if (this.player)
                     this.player.stopTransmitTo(this.medias[0]);
                 if (this.recorder)
                     (this.medias[0] as AudioMedia).stopTransmitTo(this.recorder);
             }
-
+            */
             this.call.hangup(statusCode, reason);
-        })
+        });
     }
 
     playSong(songPath: string) {
+        this.call.play(songPath);
+        /*
         if (this.player) {
             console.log("CallExt::playSong, Play song " + songPath);
             this.player.playSong(songPath);
         }
+        */
     }
 }
 
@@ -264,7 +269,7 @@ export class BuddyExt extends EventEmitter {
         this._buddy.sendInstantMessage(message);
     }
 
-    subscribePresence(subscribe:boolean):void {
+    subscribePresence(subscribe: boolean): void {
         debug("BuddyExt subscribePresence");
         this.buddy.subscribePresence(subscribe);
     }
@@ -332,7 +337,7 @@ export class AccountExt extends EventEmitter {
     }
     onCall(info: CallInfo, call: Call): void {
         debug('AccountExt.onCall');
-        //if (this.isCallInProgress)
+        // if (this.isCallInProgress)
         //    return call.hangup();
         this.emit('call', info, new CallExt(this, call));
     }
@@ -349,14 +354,14 @@ export class AccountExt extends EventEmitter {
      * @reject {Error}  call in progress
      * @reject {Error}  disconnected
      */
-    makeCall(destination: string, param: string, audioDeviceId:number, startTonePath?: string, stopTonePath?:string): Promise<CallExt> {
+    makeCall(destination: string, param: string, audioDeviceId: number, startTonePath?: string, stopTonePath?: string): Promise<CallExt> {
         debug('AccountExt.makeCall, des:' + destination + ", startTonePath:" + startTonePath + ",stopTonePath:" + stopTonePath);
         return new Promise((resolve, reject) => {
             if (this.state !== 'registered')
                 return reject(new Error('not registered'));
-            
+
             const call = this.account.makeCall(destination, param, audioDeviceId, startTonePath, stopTonePath);
-            const callExt = new CallExt(this, call, null);
+            const callExt = new CallExt(this, call);
             resolve(callExt);
         });
     }
@@ -373,9 +378,9 @@ export class AccountExt extends EventEmitter {
         return new Promise((resolve, reject) => {
             if (this.state !== 'registered')
                 return reject(new Error('not registered'));
-            
-            const call = this.account.makeCall(destination, param, -1);
-            const callExt = new CallExt(this, call, playerConfig);
+
+            const call = this.account.makeCall(destination, param, -1, playerConfig.player.filename);
+            const callExt = new CallExt(this, call);
             resolve(callExt);
         });
     }
@@ -394,7 +399,7 @@ export class AccountExt extends EventEmitter {
     }
 
     addBuddy(buddyUri: string, subscribePresence: boolean = false): BuddyExt {
-        let buddy: BuddyExt = new BuddyExt(this.account.addBuddy(buddyUri, subscribePresence));
+        const buddy: BuddyExt = new BuddyExt(this.account.addBuddy(buddyUri, subscribePresence));
         return buddy;
     }
 
@@ -431,7 +436,7 @@ export class Pjsua {
         this._transport = new this.sipster.Transport(config.transport);
     }
 
-    disconnect():Promise<any> {
+    disconnect(): Promise<any> {
         return this._sipster.disconnect();
     }
 
@@ -525,7 +530,7 @@ export class Pjsua {
         return new Promise<void>((resolve, reject) => {
             if (!this.account)
                 return reject(new Error('no account'));
-            //if (this.account.isCallInProgress)
+            // if (this.account.isCallInProgress)
             //    return reject(new Error('call in progress'));
             if (this.account.state === 'unregistered')
                 return resolve();   // noop
@@ -560,17 +565,17 @@ export class Pjsua {
     }
     */
 
-    createPlayer(filename:string): AudioMediaPlayer {
-        let player:AudioMediaPlayer = Sipster.instance().createPlayer();
+    createPlayer(filename: string): AudioMediaPlayer {
+        const player: AudioMediaPlayer = Sipster.instance().createPlayer();
         player.playSong(filename);
         return player;
     }
 
-    createRecorder(filename:string): AudioMediaRecorder {
+    createRecorder(filename: string): AudioMediaRecorder {
         return Sipster.instance().createRecorder(filename);
     }
 
-    enumDevs():Array<AudioDevInfo> {
+    enumDevs(): Array<AudioDevInfo> {
         return this._sipster.enumDevs;
     }
 }
