@@ -8,13 +8,13 @@ import {
     Call,
     CallInfo,
     Account,
-    AudioMedia,
     AudioMediaPlayer,
     AudioMediaRecorder,
     Media,
     makeAccountConfig,
     Buddy,
-    AudioDevInfo
+    AudioDevInfo,
+    SipPlatform
 } from 'sipster.ts';
 
 export {
@@ -24,7 +24,8 @@ export {
     CallInfo,
     Media,
     AudioMediaPlayer,
-    AudioMediaRecorder
+    AudioMediaRecorder,
+    SipPlatform
 };
 
 const debug = DEBUG('PJSUA:main');
@@ -121,6 +122,11 @@ export class CallExt extends EventEmitter {
                     call.removeAllListeners();
                     return this.onDisconnected(lastStatusCode);
             }
+
+        call.on('playerStatus', (songPath: string, type: number, param: number) => {
+                // console.log("CallExt::playerStatus, song:" + songPath + ",type" + type + ",param" + param);
+                this.emit('playerStatus', songPath, type, param);
+            });
         });
 
         /*
@@ -429,9 +435,12 @@ export class Pjsua {
         return this._playerConfig;
     }
 
-    constructor(config: PjsuaConfigs) {
-        this._playerConfig = config.player;
+    constructor() {
         this._sipster = Sipster.instance();
+    }
+
+    initPJSip(config: PjsuaConfigs) {
+        this._playerConfig = config.player;
         this._sipster.init(config.endpoint);
         this._transport = new this.sipster.Transport(config.transport);
     }
@@ -566,8 +575,9 @@ export class Pjsua {
     */
 
     createPlayer(filename: string): AudioMediaPlayer {
-        const player: AudioMediaPlayer = Sipster.instance().createPlayer();
-        player.playSong(filename);
+        console.log("Create local player, file:" + filename);
+        const player: AudioMediaPlayer = Sipster.instance().createPlayer(filename);
+        // player.playSong(filename);
         return player;
     }
 
@@ -577,5 +587,34 @@ export class Pjsua {
 
     enumDevs(): Array<AudioDevInfo> {
         return this._sipster.enumDevs;
+    }
+
+}
+
+
+export class SipSystemExt extends EventEmitter {
+    private readonly _sipster: Sipster;
+    private _sipSystem: SipPlatform;
+    constructor() {
+        super();
+        this._sipster = Sipster.instance();
+
+        this._sipSystem = this.sipster.systemInit();
+        this._sipSystem.on("systemStatus", (state: string) => {
+            console.log("System state changed:" + state);
+            this.emit("systemStatus", state);
+        });
+    }
+
+    protected get sipster(): Sipster {
+        return this._sipster;
+    }
+
+    init(): void {
+        this._sipSystem.init();
+    }
+
+    verifyDog(): boolean {
+        return this._sipSystem.verifyDog;
     }
 }
