@@ -589,8 +589,13 @@ export class Pjsua {
         return this._sipster.enumDevs;
     }
 
+    codecEnum(): Array<string> {
+        return this._sipster.codecEnum;
+    }
+    setCodecPriority(codecId: string, priority:number): void {
+        this._sipster.setCodecPriority(codecId, priority);
+    }
 }
-
 
 export class SipSystemExt extends EventEmitter {
     private readonly _sipster: Sipster;
